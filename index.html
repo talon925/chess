@@ -6,40 +6,12 @@
     <title>Discord Sah</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #36393f;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
-        }
-        #container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 16px;
-        }
-        canvas {
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-            cursor: pointer;
-        }
-        #status {
-            color: #fff;
-            font-size: 20px;
-            font-weight: 600;
-            text-align: center;
-            background: rgba(0,0,0,0.3);
-            padding: 12px 24px;
-            border-radius: 8px;
-            min-width: 300px;
-        }
-        #players {
-            color: #b9bbbe;
-            font-size: 14px;
-        }
+        body { background: #36393f; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif; overflow: hidden; }
+        #container { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        canvas { border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); cursor: pointer; }
+        #status { color: #fff; font-size: 20px; font-weight: 600; text-align: center; background: rgba(0,0,0,0.3); padding: 12px 24px; border-radius: 8px; min-width: 300px; }
+        #players { color: #b9bbbe; font-size: 14px; }
+        #debug { color: #ff0; font-size: 12px; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -47,12 +19,11 @@
         <canvas id="board" width="480" height="480"></canvas>
         <div id="status">Ucitavanje...</div>
         <div id="players"></div>
+        <div id="debug"></div>
     </div>
 
 <script>
 // ==================== SAHOVSKA BIBLIOTEKA ====================
-// Ugradjena chess.js logika direktno u kod
-
 var Chess = function(fen) {
     var board = [];
     var turn = 'w';
@@ -61,8 +32,6 @@ var Chess = function(fen) {
     var halfMoves = 0;
     var moveNumber = 1;
     var history = [];
-
-    var PIECE_MAP = { p: 'p', r: 'r', n: 'n', b: 'b', q: 'q', k: 'k' };
 
     function clear() {
         board = [];
@@ -81,9 +50,8 @@ var Chess = function(fen) {
             var col = 0;
             for (var j = 0; j < row.length; j++) {
                 var ch = row[j];
-                if (ch >= '1' && ch <= '8') {
-                    col += parseInt(ch);
-                } else {
+                if (ch >= '1' && ch <= '8') { col += parseInt(ch); }
+                else {
                     var color = ch === ch.toUpperCase() ? 'w' : 'b';
                     board[i][col] = { type: ch.toLowerCase(), color: color };
                     col++;
@@ -99,7 +67,6 @@ var Chess = function(fen) {
         halfMoves = parseInt(parts[4]) || 0;
         moveNumber = parseInt(parts[5]) || 1;
     }
-
     load(fen);
 
     function get(square) {
@@ -108,36 +75,24 @@ var Chess = function(fen) {
         if (row < 0 || row > 7 || col < 0 || col > 7) return null;
         return board[row][col];
     }
-
-    function boardArray() {
-        return board;
-    }
-
-    function turnColor() {
-        return turn;
-    }
+    function boardArray() { return board; }
+    function turnColor() { return turn; }
 
     function findKing(color) {
-        for (var r = 0; r < 8; r++) {
-            for (var c = 0; c < 8; c++) {
-                var p = board[r][c];
-                if (p && p.type === 'k' && p.color === color) {
-                    return String.fromCharCode(97 + c) + (8 - r);
-                }
-            }
+        for (var r = 0; r < 8; r++) for (var c = 0; c < 8; c++) {
+            var p = board[r][c];
+            if (p && p.type === 'k' && p.color === color) return String.fromCharCode(97+c)+(8-r);
         }
         return null;
     }
 
     function isAttacked(square, byColor) {
-        for (var r = 0; r < 8; r++) {
-            for (var c = 0; c < 8; c++) {
-                var p = board[r][c];
-                if (p && p.color === byColor) {
-                    var from = String.fromCharCode(97 + c) + (8 - r);
-                    var moves = rawMoves(from, false);
-                    if (moves.indexOf(square) !== -1) return true;
-                }
+        for (var r = 0; r < 8; r++) for (var c = 0; c < 8; c++) {
+            var p = board[r][c];
+            if (p && p.color === byColor) {
+                var from = String.fromCharCode(97+c)+(8-r);
+                var moves = rawMoves(from);
+                if (moves.indexOf(square) !== -1) return true;
             }
         }
         return false;
@@ -149,94 +104,61 @@ var Chess = function(fen) {
         return isAttacked(king, color === 'w' ? 'b' : 'w');
     }
 
-    function rawMoves(square, checkKing) {
+    function rawMoves(square) {
         var piece = get(square);
         if (!piece) return [];
-        var col = square.charCodeAt(0) - 97;
-        var row = 8 - parseInt(square[1]);
-        var moves = [];
-        var type = piece.type;
-        var color = piece.color;
+        var col = square.charCodeAt(0)-97, row = 8-parseInt(square[1]);
+        var moves = [], type = piece.type, color = piece.color;
 
         function addMove(c, r) {
-            if (c >= 0 && c <= 7 && r >= 0 && r <= 7) {
-                var target = board[r][c];
-                if (!target || target.color !== color) {
-                    moves.push(String.fromCharCode(97 + c) + (8 - r));
-                }
-                return !target;
+            if (c>=0&&c<=7&&r>=0&&r<=7) {
+                var t = board[r][c];
+                if (!t||t.color!==color) moves.push(String.fromCharCode(97+c)+(8-r));
+                return !t;
             }
             return false;
         }
 
-        if (type === 'p') {
-            var dir = color === 'w' ? -1 : 1;
-            var startRow = color === 'w' ? 6 : 1;
-            // napred
-            if (row + dir >= 0 && row + dir <= 7 && !board[row + dir][col]) {
-                moves.push(String.fromCharCode(97 + col) + (8 - (row + dir)));
-                // dva polja
-                if (row === startRow && !board[row + 2 * dir][col]) {
-                    moves.push(String.fromCharCode(97 + col) + (8 - (row + 2 * dir)));
-                }
+        if (type==='p') {
+            var dir = color==='w'?-1:1, sr = color==='w'?6:1;
+            if (row+dir>=0&&row+dir<=7&&!board[row+dir][col]) {
+                moves.push(String.fromCharCode(97+col)+(8-(row+dir)));
+                if (row===sr&&!board[row+2*dir][col]) moves.push(String.fromCharCode(97+col)+(8-(row+2*dir)));
             }
-            // jede
-            for (var dc = -1; dc <= 1; dc += 2) {
-                var nc = col + dc;
-                var nr = row + dir;
-                if (nc >= 0 && nc <= 7 && nr >= 0 && nr <= 7) {
-                    var t = board[nr][nc];
-                    if (t && t.color !== color) {
-                        moves.push(String.fromCharCode(97 + nc) + (8 - nr));
-                    }
-                }
+            for (var dc=-1;dc<=1;dc+=2) {
+                var nc=col+dc,nr=row+dir;
+                if (nc>=0&&nc<=7&&nr>=0&&nr<=7) { var t=board[nr][nc]; if (t&&t.color!==color) moves.push(String.fromCharCode(97+nc)+(8-nr)); }
             }
-        } else if (type === 'n') {
-            var jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-            for (var i = 0; i < jumps.length; i++) {
-                addMove(col + jumps[i][0], row + jumps[i][1]);
-            }
-        } else if (type === 'b' || type === 'q') {
-            var dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
-            for (var d = 0; d < dirs.length; d++) {
-                for (var i = 1; i < 8; i++) {
-                    if (!addMove(col + dirs[d][0] * i, row + dirs[d][1] * i)) break;
-                }
-            }
+        } else if (type==='n') {
+            var j=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+            for (var i=0;i<j.length;i++) addMove(col+j[i][0],row+j[i][1]);
+        } else if (type==='b'||type==='q') {
+            var d=[[-1,-1],[-1,1],[1,-1],[1,1]];
+            for (var i=0;i<d.length;i++) for (var s=1;s<8;s++) if(!addMove(col+d[i][0]*s,row+d[i][1]*s)) break;
         }
-        if (type === 'r' || type === 'q') {
-            var dirs2 = [[-1,0],[1,0],[0,-1],[0,1]];
-            for (var d = 0; d < dirs2.length; d++) {
-                for (var i = 1; i < 8; i++) {
-                    if (!addMove(col + dirs2[d][0] * i, row + dirs2[d][1] * i)) break;
-                }
-            }
+        if (type==='r'||type==='q') {
+            var d=[[-1,0],[1,0],[0,-1],[0,1]];
+            for (var i=0;i<d.length;i++) for (var s=1;s<8;s++) if(!addMove(col+d[i][0]*s,row+d[i][1]*s)) break;
         }
-        if (type === 'k') {
-            var kingDirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-            for (var i = 0; i < kingDirs.length; i++) {
-                addMove(col + kingDirs[i][0], row + kingDirs[i][1]);
-            }
+        if (type==='k') {
+            var kd=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+            for (var i=0;i<kd.length;i++) addMove(col+kd[i][0],row+kd[i][1]);
         }
         return moves;
     }
 
     function legalMoves(square) {
-        var raw = rawMoves(square, true);
+        var raw = rawMoves(square);
         var legal = [];
         var piece = get(square);
         if (!piece) return [];
-        for (var i = 0; i < raw.length; i++) {
+        for (var i=0;i<raw.length;i++) {
             var testBoard = JSON.parse(JSON.stringify(board));
-            var col = square.charCodeAt(0) - 97;
-            var row = 8 - parseInt(square[1]);
-            var tcol = raw[i].charCodeAt(0) - 97;
-            var trow = 8 - parseInt(raw[i][1]);
-            board[trow][tcol] = board[row][col];
+            var col = square.charCodeAt(0)-97, row = 8-parseInt(square[1]);
+            var tc = raw[i].charCodeAt(0)-97, tr = 8-parseInt(raw[i][1]);
+            board[tr][tc] = board[row][col];
             board[row][col] = null;
-            if (!inCheck(piece.color)) {
-                legal.push(raw[i]);
-            }
+            if (!inCheck(piece.color)) legal.push(raw[i]);
             board = testBoard;
         }
         return legal;
@@ -244,135 +166,102 @@ var Chess = function(fen) {
 
     function allLegalMoves() {
         var all = [];
-        for (var r = 0; r < 8; r++) {
-            for (var c = 0; c < 8; c++) {
-                var p = board[r][c];
-                if (p && p.color === turn) {
-                    var sq = String.fromCharCode(97 + c) + (8 - r);
-                    var moves = legalMoves(sq);
-                    for (var i = 0; i < moves.length; i++) {
-                        all.push({ from: sq, to: moves[i] });
-                    }
-                }
+        for (var r=0;r<8;r++) for (var c=0;c<8;c++) {
+            var p=board[r][c];
+            if (p&&p.color===turn) {
+                var sq = String.fromCharCode(97+c)+(8-r);
+                var m = legalMoves(sq);
+                for (var i=0;i<m.length;i++) all.push({from:sq,to:m[i]});
             }
         }
         return all;
     }
 
     function move(moveObj) {
-        var from = moveObj.from || moveObj;
-        var to = moveObj.to;
-        var col = from.charCodeAt(0) - 97;
-        var row = 8 - parseInt(from[1]);
-        var tcol = to.charCodeAt(0) - 97;
-        var trow = 8 - parseInt(to[1]);
+        var from = moveObj.from, to = moveObj.to;
+        var col = from.charCodeAt(0)-97, row = 8-parseInt(from[1]);
+        var tcol = to.charCodeAt(0)-97, trow = 8-parseInt(to[1]);
         var piece = board[row][col];
-        if (!piece || piece.color !== turn) return null;
-
-        var legals = allLegalMoves();
-        var found = false;
-        for (var i = 0; i < legals.length; i++) {
-            if (legals[i].from === from && legals[i].to === to) {
-                found = true;
-                break;
-            }
-        }
+        if (!piece||piece.color!==turn) return null;
+        var legals = allLegalMoves(), found = false;
+        for (var i=0;i<legals.length;i++) { if(legals[i].from===from&&legals[i].to===to){found=true;break;} }
         if (!found) return null;
-
-        history.push({
-            from: from, to: to, piece: piece,
-            captured: board[trow][tcol],
-            castling: JSON.parse(JSON.stringify(castling)),
-            epSquare: epSquare, halfMoves: halfMoves, moveNumber: moveNumber
-        });
-
         board[trow][tcol] = piece;
         board[row][col] = null;
-
-        if (piece.type === 'p' && (trow === 0 || trow === 7)) {
-            board[trow][tcol].type = 'q';
-        }
-
-        turn = turn === 'w' ? 'b' : 'w';
-        return { from: from, to: to };
-    }
-
-    function isGameOver() {
-        return allLegalMoves().length === 0;
-    }
-
-    function isCheckmate() {
-        return isGameOver() && inCheck(turn);
-    }
-
-    function isStalemate() {
-        return isGameOver() && !inCheck(turn);
-    }
-
-    function isCheck() {
-        return inCheck(turn);
+        turn = turn==='w'?'b':'w';
+        return {from:from,to:to};
     }
 
     return {
-        get: get,
-        board: boardArray,
-        turn: turnColor,
-        moves: function(opts) {
-            var sq = opts && opts.square;
-            var all = [];
-            if (sq) {
-                var leg = legalMoves(sq);
-                for (var i = 0; i < leg.length; i++) {
-                    all.push({ from: sq, to: leg[i], verbose: true });
-                }
-            } else {
-                all = allLegalMoves();
+        get:get, board:boardArray, turn:turnColor,
+        moves:function(opts){
+            var sq = opts&&opts.square;
+            if(sq){
+                var leg=legalMoves(sq);
+                if(opts&&opts.verbose) return leg.map(function(to){return{from:sq,to:to,verbose:true};});
+                return leg;
             }
-            if (opts && opts.verbose) return all;
-            return all.map(function(m) { return m.to; });
+            var all=allLegalMoves();
+            if(opts&&opts.verbose) return all;
+            return all.map(function(m){return m.to;});
         },
-        move: move,
-        isGameOver: isGameOver,
-        isCheckmate: isCheckmate,
-        isStalemate: isStalemate,
-        isCheck: isCheck,
-        isDraw: function() { return isStalemate(); },
-        fen: function() { return ''; }
+        move:move,
+        isGameOver:function(){return allLegalMoves().length===0;},
+        isCheckmate:function(){return this.isGameOver()&&inCheck(turn);},
+        isStalemate:function(){return this.isGameOver()&&!inCheck(turn);},
+        isCheck:function(){return inCheck(turn);},
+        isDraw:function(){return this.isStalemate();}
     };
 };
 
 // ==================== DISCORD SDK ====================
 var discordSdk = null;
 var instanceId = null;
-var participants = [];
 var myUserId = null;
-var myPlayerNumber = null;
+var myPlayerNumber = null; // 0 = beli, 1 = crni, null = posmatrac
+var participants = [];
+
+function debugLog(msg) {
+    document.getElementById('debug').innerText = msg;
+    console.log(msg);
+}
 
 async function setupDiscord() {
     try {
         var sdk = window.discordSdk;
         if (!sdk || !sdk.DiscordSDK) {
-            showStatus('Discord SDK nije dostupan');
+            debugLog('Discord SDK nije ucitan');
+            showStatus('Greska: Discord SDK nije ucitan');
             return;
         }
         
-        // >>>>>>>>> ZAMENI OVAJ BROJ PRAVIM APPLICATION ID-JEM <<<<<<<<<
+        // >>> ZAMENI SA PRAVIM APPLICATION ID <<<
         discordSdk = new sdk.DiscordSDK('1514311922265227356');
-        
         await discordSdk.ready();
         
         var auth = await discordSdk.commands.authenticate();
         myUserId = auth.user.id;
+        debugLog('Moj user ID: ' + myUserId);
         
         var inst = await discordSdk.commands.getInstanceConnectedParticipants();
         instanceId = inst.instanceId;
+        debugLog('Instance ID: ' + instanceId);
+        debugLog('Participanti: ' + inst.participants.length);
+        
+        // Prikazi sve participante
+        for (var i = 0; i < inst.participants.length; i++) {
+            debugLog('Participant ' + i + ': ' + inst.participants[i].id + ' (ja: ' + (inst.participants[i].id === myUserId) + ')');
+        }
+        
         updateParticipants(inst.participants);
         
         discordSdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', function(data) {
+            debugLog('UPDATE - participanti: ' + data.participants.length);
             updateParticipants(data.participants);
         });
         
         discordSdk.subscribe('MESSAGE_CREATE', function(event) {
+            debugLog('Poruka primljena: ' + JSON.stringify(event.message));
             if (event.message && event.message.type === 'CHESS_MOVE') {
                 handleOpponentMove(event.message.data);
             }
@@ -381,6 +270,7 @@ async function setupDiscord() {
         showStatus('Povezan! Cekam drugog igraca...');
         drawBoard();
     } catch(e) {
+        debugLog('GRESKA: ' + e.message);
         console.error(e);
         showStatus('Greska pri povezivanju');
     }
@@ -388,16 +278,23 @@ async function setupDiscord() {
 
 function updateParticipants(list) {
     participants = list;
-    document.getElementById('players').innerText = 'Igraca u sesiji: ' + list.length;
+    document.getElementById('players').innerText = 'Igraca: ' + list.length;
+    
+    // Sortiraj po ID-ju da uvek isti bude prvi
+    list.sort(function(a, b) { return a.id.localeCompare(b.id); });
+    
     if (list.length >= 2 && myPlayerNumber === null) {
         if (list[0].id === myUserId) {
             myPlayerNumber = 0;
             showStatus('Ti si BELI. Na potezu si!');
+            debugLog('Ja sam BELI (player 0)');
         } else if (list[1].id === myUserId) {
             myPlayerNumber = 1;
             showStatus('Ti si CRNI. Cekaj potez...');
+            debugLog('Ja sam CRNI (player 1)');
         } else {
             showStatus('Ti si posmatrac');
+            debugLog('Ja sam posmatrac');
         }
         drawBoard();
     }
@@ -405,16 +302,21 @@ function updateParticipants(list) {
 
 async function sendMove(data) {
     if (!discordSdk) return;
+    debugLog('Saljem potez: ' + JSON.stringify(data));
     try {
         await discordSdk.commands.sendMessage({
             type: 'CHESS_MOVE',
             data: data,
             instanceId: instanceId
         });
-    } catch(e) {}
+        debugLog('Potez poslat');
+    } catch(e) {
+        debugLog('Greska pri slanju: ' + e.message);
+    }
 }
 
 function handleOpponentMove(data) {
+    debugLog('Primljen protivnicki potez: ' + JSON.stringify(data));
     game.move(data);
     selectedSquare = null;
     possibleMoves = [];
@@ -433,7 +335,8 @@ var possibleMoves = [];
 
 function isMyTurn() {
     if (myPlayerNumber === null) return false;
-    return (myPlayerNumber === 0 && game.turn() === 'w') || (myPlayerNumber === 1 && game.turn() === 'b');
+    var whiteTurn = game.turn() === 'w';
+    return (myPlayerNumber === 0 && whiteTurn) || (myPlayerNumber === 1 && !whiteTurn);
 }
 
 function updateStatus() {
@@ -451,123 +354,90 @@ function updateStatus() {
 var canvas = document.getElementById('board');
 var ctx = canvas.getContext('2d');
 var S = 60;
-var LIGHT = '#f0d9b5';
-var DARK = '#b58863';
-
-var SYMBOLS = {
-    p: '\u265F', r: '\u265C', n: '\u265E', b: '\u265D', q: '\u265B', k: '\u265A',
-    P: '\u2659', R: '\u2656', N: '\u2658', B: '\u2657', Q: '\u2655', K: '\u2654'
-};
+var LIGHT = '#f0d9b5', DARK = '#b58863';
+var SYMBOLS = { p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚',P:'♙',R:'♖',N:'♘',B:'♗',Q:'♕',K:'♔' };
 
 function drawBoard() {
-    ctx.clearRect(0, 0, 480, 480);
-    
-    for (var r = 0; r < 8; r++) {
-        for (var c = 0; c < 8; c++) {
-            ctx.fillStyle = (r + c) % 2 === 0 ? LIGHT : DARK;
-            ctx.fillRect(c * S, r * S, S, S);
-        }
+    ctx.clearRect(0,0,480,480);
+    for (var r=0;r<8;r++) for (var c=0;c<8;c++) {
+        ctx.fillStyle = (r+c)%2===0 ? LIGHT : DARK;
+        ctx.fillRect(c*S,r*S,S,S);
     }
-    
-    // Sah - crveni kralj
     if (game.isCheck()) {
         var b = game.board();
-        for (var r = 0; r < 8; r++) {
-            for (var c = 0; c < 8; c++) {
-                if (b[r][c] && b[r][c].type === 'k' && b[r][c].color === game.turn()) {
-                    ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-                    ctx.fillRect(c * S, r * S, S, S);
-                }
+        for (var r=0;r<8;r++) for (var c=0;c<8;c++) {
+            if (b[r][c]&&b[r][c].type==='k'&&b[r][c].color===game.turn()) {
+                ctx.fillStyle='rgba(255,0,0,0.5)'; ctx.fillRect(c*S,r*S,S,S);
             }
         }
     }
-    
-    // Selektovano polje
-    if (selectedSquare !== null) {
-        ctx.fillStyle = 'rgba(255, 255, 0, 0.6)';
-        ctx.fillRect(selectedSquare.col * S, selectedSquare.row * S, S, S);
+    if (selectedSquare) {
+        ctx.fillStyle='rgba(255,255,0,0.6)'; ctx.fillRect(selectedSquare.col*S,selectedSquare.row*S,S,S);
     }
-    
-    // Moguci potezi
-    for (var i = 0; i < possibleMoves.length; i++) {
-        var m = possibleMoves[i];
-        ctx.beginPath();
-        ctx.arc(m.col * S + S / 2, m.row * S + S / 2, 15, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-        ctx.fill();
+    for (var i=0;i<possibleMoves.length;i++) {
+        var m=possibleMoves[i];
+        ctx.beginPath(); ctx.arc(m.col*S+S/2,m.row*S+S/2,15,0,Math.PI*2);
+        ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fill();
     }
-    
-    // Figure
-    var b = game.board();
-    for (var r = 0; r < 8; r++) {
-        for (var c = 0; c < 8; c++) {
-            var p = b[r][c];
-            if (p) {
-                var key = p.color === 'w' ? p.type.toUpperCase() : p.type;
-                var sym = SYMBOLS[key];
-                ctx.font = 'bold 44px Arial, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                ctx.fillText(sym, c * S + S / 2 + 1, r * S + S / 2 + 1);
-                ctx.fillStyle = p.color === 'w' ? '#ffffff' : '#1a1a1a';
-                ctx.fillText(sym, c * S + S / 2, r * S + S / 2);
-            }
+    var b=game.board();
+    for (var r=0;r<8;r++) for (var c=0;c<8;c++) {
+        var p=b[r][c];
+        if (p) {
+            var key=p.color==='w'?p.type.toUpperCase():p.type;
+            ctx.font='bold 44px Arial,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillText(SYMBOLS[key],c*S+S/2+1,r*S+S/2+1);
+            ctx.fillStyle=p.color==='w'?'#fff':'#1a1a1a'; ctx.fillText(SYMBOLS[key],c*S+S/2,r*S+S/2);
         }
     }
 }
 
 // ==================== KLIK ====================
 canvas.addEventListener('click', function(e) {
-    if (!isMyTurn()) return;
+    debugLog('Klik! myPlayerNumber=' + myPlayerNumber + ' turn=' + game.turn() + ' isMyTurn=' + isMyTurn());
     
-    var rect = canvas.getBoundingClientRect();
-    var scaleX = 480 / rect.width;
-    var scaleY = 480 / rect.height;
-    var x = (e.clientX - rect.left) * scaleX;
-    var y = (e.clientY - rect.top) * scaleY;
-    var col = Math.floor(x / S);
-    var row = Math.floor(y / S);
-    
-    if (col < 0 || col > 7 || row < 0 || row > 7) return;
-    
-    var sq = String.fromCharCode(97 + col) + (8 - row);
-    
-    if (selectedSquare === null) {
-        var piece = game.get(sq);
-        if (piece && piece.color === game.turn()) {
-            selectedSquare = { row: row, col: col };
-            var moves = game.moves({ square: sq, verbose: true });
-            possibleMoves = [];
-            for (var i = 0; i < moves.length; i++) {
-                var m = moves[i];
-                var toSq = m.to || m;
-                possibleMoves.push({
-                    row: 8 - parseInt(toSq[1]),
-                    col: toSq.charCodeAt(0) - 97
-                });
-            }
-        }
-    } else {
-        var fromSq = String.fromCharCode(97 + selectedSquare.col) + (8 - selectedSquare.row);
-        var result = game.move({ from: fromSq, to: sq });
-        
-        if (result) {
-            sendMove({ from: fromSq, to: sq });
-            selectedSquare = null;
-            possibleMoves = [];
-            drawBoard();
-            updateStatus();
-        } else {
-            selectedSquare = null;
-            possibleMoves = [];
-        }
+    if (!isMyTurn()) {
+        debugLog('Nije moj potez');
+        return;
     }
     
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = 480/rect.width, scaleY = 480/rect.height;
+    var x = (e.clientX-rect.left)*scaleX, y = (e.clientY-rect.top)*scaleY;
+    var col = Math.floor(x/S), row = Math.floor(y/S);
+    if (col<0||col>7||row<0||row>7) return;
+    var sq = String.fromCharCode(97+col)+(8-row);
+    debugLog('Kliknuto polje: ' + sq);
+    
+    if (!selectedSquare) {
+        var piece = game.get(sq);
+        debugLog('Figura: ' + (piece ? piece.color+piece.type : 'nema'));
+        if (piece && piece.color === game.turn()) {
+            selectedSquare = {row:row,col:col};
+            var moves = game.moves({square:sq,verbose:true});
+            possibleMoves = [];
+            for (var i=0;i<moves.length;i++) {
+                var m=moves[i], toSq=m.to||m;
+                possibleMoves.push({row:8-parseInt(toSq[1]),col:toSq.charCodeAt(0)-97});
+            }
+            debugLog('Mogucih poteza: ' + possibleMoves.length);
+        }
+    } else {
+        var fromSq = String.fromCharCode(97+selectedSquare.col)+(8-selectedSquare.row);
+        debugLog('Pokusaj poteza: ' + fromSq + ' -> ' + sq);
+        var result = game.move({from:fromSq,to:sq});
+        if (result) {
+            debugLog('Potez uspesan!');
+            sendMove({from:fromSq,to:sq});
+            selectedSquare = null; possibleMoves = [];
+            drawBoard(); updateStatus();
+        } else {
+            debugLog('Potez nije validan');
+            selectedSquare = null; possibleMoves = [];
+        }
+    }
     drawBoard();
 });
 
-// ==================== START ====================
 setupDiscord();
 drawBoard();
 updateStatus();
