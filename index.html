@@ -4,58 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Discord Šah</title>
-    <script src="https://cdn.jsdelivr.net/npm/chess.js@0.12.0/chess.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background: #36393f;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            overflow: hidden;
-        }
-
-        #container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 16px;
-        }
-
-        canvas {
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-
-        canvas:active {
-            transform: scale(0.98);
-        }
-
-        #status {
-            color: #ffffff;
-            font-size: 20px;
-            font-weight: 600;
-            text-align: center;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 12px 24px;
-            border-radius: 8px;
-            min-width: 300px;
-        }
-
-        #players {
-            color: #b9bbbe;
-            font-size: 14px;
-            text-align: center;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #36393f; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #container { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        canvas { border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); cursor: pointer; }
+        #status { color: #fff; font-size: 20px; font-weight: 600; text-align: center; background: rgba(0,0,0,0.3); padding: 12px 24px; border-radius: 8px; min-width: 300px; }
+        #players { color: #b9bbbe; font-size: 14px; text-align: center; }
     </style>
 </head>
 <body>
@@ -64,326 +19,180 @@
         <div id="status">Učitavanje...</div>
         <div id="players"></div>
     </div>
-</body>
-
 <script>
-    // ==================== DISCORD SDK ====================
-    let discordSdk = null;
-    let instanceId = null;
-    let participants = [];
-    let myUserId = null;
-    let myPlayerNumber = null; // 0 = beli, 1 = crni, null = posmatrač
+// ==================== DISCORD SDK ====================
+let discordSdk = null;
+let myUserId = null;
+let myPlayerNumber = null;
+let participants = [];
+let instanceId = null;
 
-    async function setupDiscord() {
-        try {
-            // @ts-ignore
-            const { DiscordSDK } = window.discordSdk;
+async function setupDiscord() {
+    try {
+        const { DiscordSDK } = window.discordSdk || {};
+        if (!DiscordSDK) { showStatus('Discord SDK nije učitan'); return; }
 
-            if (!DiscordSDK) {
-                showStatus('❌ Discord SDK nije dostupan. Otvori ovu aktivnost kroz Discord.');
-                return;
+        // ZAMENI SA NOVIM APPLICATION ID
+        discordSdk = new DiscordSDK('1514311922265227356');
+        await discordSdk.ready();
+
+        const { user } = await discordSdk.commands.authenticate();
+        myUserId = user.id;
+
+        const instance = await discordSdk.commands.getInstanceConnectedParticipants();
+        instanceId = instance.instanceId;
+        updateParticipants(instance.participants);
+
+        discordSdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', (data) => {
+            updateParticipants(data.participants);
+        });
+
+        discordSdk.subscribe('MESSAGE_CREATE', (event) => {
+            if (event.message.type === 'CHESS_MOVE') {
+                handleOpponentMove(event.message.data);
             }
+        });
 
-            // ZAMENI 'YOUR_APPLICATION_ID' SA PRAVIM ID-JEM TVOJE DISCORD APLIKACIJE
-            discordSdk = new DiscordSDK('1514311922265227356');
-
-            await discordSdk.ready();
-
-            // Autentifikacija
-            const { user } = await discordSdk.commands.authenticate();
-            myUserId = user.id;
-            console.log('Ulogovan kao:', user.username);
-
-            // Dobavi informacije o instanci
-            const instance = await discordSdk.commands.getInstanceConnectedParticipants();
-            instanceId = instance.instanceId;
-            updateParticipantsList(instance.participants);
-
-            // Osluškuj promene u učesnicima
-            discordSdk.subscribe('ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE', (data) => {
-                updateParticipantsList(data.participants);
-            });
-
-            // Osluškuj poteze od drugog igrača
-            discordSdk.subscribe('MESSAGE_CREATE', (event) => {
-                if (event.message.type === 'CHESS_MOVE') {
-                    handleOpponentMove(event.message.data);
-                }
-            });
-
-            showStatus('✅ Povezan! Čekam drugog igrača...');
-            drawBoard();
-
-        } catch (error) {
-            console.error('Greška u setupDiscord:', error);
-            showStatus('❌ Greška pri povezivanju sa Discord-om');
-        }
-    }
-
-    function updateParticipantsList(newParticipants) {
-        participants = newParticipants;
-        document.getElementById('players').innerText =
-            `Igrači u sesiji: ${participants.length}`;
-
-        if (participants.length >= 2 && myPlayerNumber === null) {
-            // Prva dva igrača postaju beli i crni
-            if (participants[0].id === myUserId) {
-                myPlayerNumber = 0; // Ja sam beli
-                showStatus('🎮 Ti si BELI. Ti si na potezu!');
-            } else if (participants[1].id === myUserId) {
-                myPlayerNumber = 1; // Ja sam crni
-                showStatus('🎮 Ti si CRNI. Čekaj belog da odigra potez.');
-            } else {
-                myPlayerNumber = null; // Posmatrač
-                showStatus('👀 Ti si posmatrač.');
-            }
-            drawBoard();
-        }
-    }
-
-    async function sendMove(moveData) {
-        if (!discordSdk) return;
-        try {
-            await discordSdk.commands.sendMessage({
-                type: 'CHESS_MOVE',
-                data: moveData,
-                instanceId: instanceId
-            });
-        } catch (error) {
-            console.error('Greška pri slanju poteza:', error);
-        }
-    }
-
-    function handleOpponentMove(moveData) {
-        const result = game.move(moveData);
-        if (result) {
-            selectedSquare = null;
-            possibleMoves = [];
-            drawBoard();
-            updateGameStatus();
-        }
-    }
-
-    // ==================== ŠAHOVSKA LOGIKA ====================
-    const game = new Chess();
-    let selectedSquare = null; // { row, col }
-    let possibleMoves = []; // [{ row, col }]
-
-    function isMyTurn() {
-        if (myPlayerNumber === null) return false; // posmatrač ne može da igra
-        const whiteTurn = game.turn() === 'w';
-        return (myPlayerNumber === 0 && whiteTurn) || (myPlayerNumber === 1 && !whiteTurn);
-    }
-
-    function updateGameStatus() {
-        if (game.isGameOver()) {
-            if (game.isCheckmate()) {
-                const winner = game.turn() === 'w' ? 'CRNI' : 'BELI';
-                showStatus(`🏆 ŠAH-MAT! Pobedio je ${winner}!`);
-            } else if (game.isStalemate()) {
-                showStatus('🤝 PAT! Igra je nerešena.');
-            } else if (game.isDraw()) {
-                showStatus('🤝 REMI!');
-            } else {
-                showStatus('🎮 Igra je završena.');
-            }
-        } else {
-            const turnText = game.turn() === 'w' ? 'BELI' : 'CRNI';
-            if (game.isCheck()) {
-                showStatus(`⚠️ ŠAH! ${turnText} je na potezu.`);
-            } else {
-                showStatus(`🎯 ${turnText} je na potezu.`);
-            }
-        }
-    }
-
-    function showStatus(text) {
-        document.getElementById('status').innerText = text;
-    }
-
-    // ==================== CRTANJE TABLE ====================
-    const canvas = document.getElementById('board');
-    const ctx = canvas.getContext('2d');
-    const squareSize = 60;
-    const boardSize = 480;
-
-    const lightSquare = '#f0d9b5';
-    const darkSquare = '#b58863';
-    const selectedHighlight = 'rgba(255, 255, 0, 0.6)';
-    const possibleMoveColor = 'rgba(0, 0, 0, 0.25)';
-    const checkHighlight = 'rgba(255, 0, 0, 0.5)';
-
-    const pieceSymbols = {
-        'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
-        'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
-    };
-
-    function drawBoard() {
-        ctx.clearRect(0, 0, boardSize, boardSize);
-
-        // Crtaj polja
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const isLight = (row + col) % 2 === 0;
-                ctx.fillStyle = isLight ? lightSquare : darkSquare;
-                ctx.fillRect(col * squareSize, row * squareSize, squareSize, squareSize);
-            }
-        }
-
-        // Označi šah (kralja u šahu)
-        if (game.isCheck()) {
-            const kingSquare = findKingSquare(game.turn());
-            if (kingSquare) {
-                ctx.fillStyle = checkHighlight;
-                ctx.fillRect(
-                    kingSquare.col * squareSize,
-                    kingSquare.row * squareSize,
-                    squareSize,
-                    squareSize
-                );
-            }
-        }
-
-        // Označi selektovano polje
-        if (selectedSquare !== null) {
-            ctx.fillStyle = selectedHighlight;
-            ctx.fillRect(
-                selectedSquare.col * squareSize,
-                selectedSquare.row * squareSize,
-                squareSize,
-                squareSize
-            );
-        }
-
-        // Označi moguće poteze
-        for (const move of possibleMoves) {
-            ctx.beginPath();
-            ctx.arc(
-                move.col * squareSize + squareSize / 2,
-                move.row * squareSize + squareSize / 2,
-                16,
-                0,
-                Math.PI * 2
-            );
-            ctx.fillStyle = possibleMoveColor;
-            ctx.fill();
-        }
-
-        // Crtaj figure
-        const board = game.board();
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = board[row][col];
-                if (piece) {
-                    const symbol = pieceSymbols[piece.color === 'w' ? piece.type.toUpperCase() : piece.type];
-                    ctx.font = 'bold 44px "Segoe UI", Arial, sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-
-                    // Senka
-                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                    ctx.fillText(symbol, col * squareSize + squareSize / 2 + 1, row * squareSize + squareSize / 2 + 1);
-
-                    // Figura
-                    ctx.fillStyle = piece.color === 'w' ? '#ffffff' : '#1a1a1a';
-                    ctx.fillText(symbol, col * squareSize + squareSize / 2, row * squareSize + squareSize / 2);
-                }
-            }
-        }
-    }
-
-    function findKingSquare(color) {
-        const board = game.board();
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = board[row][col];
-                if (piece && piece.type === 'k' && piece.color === color) {
-                    return { row, col };
-                }
-            }
-        }
-        return null;
-    }
-
-    // ==================== KLIK NA TABLU ====================
-    canvas.addEventListener('click', (e) => {
-        if (!isMyTurn()) return;
-
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = boardSize / rect.width;   // skaliranje za responzivnost
-        const scaleY = boardSize / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
-
-        const col = Math.floor(x / squareSize);
-        const row = Math.floor(y / squareSize);
-
-        if (col < 0 || col > 7 || row < 0 || row > 7) return;
-
-        const algebraicSquare = String.fromCharCode(97 + col) + (8 - row);
-
-        if (selectedSquare === null) {
-            // Prvi klik - selektuj figuru
-            const piece = game.get(algebraicSquare);
-            if (piece && piece.color === game.turn()) {
-                selectedSquare = { row, col };
-
-                // Nađi sve legalne poteze za ovu figuru
-                const moves = game.moves({ square: algebraicSquare, verbose: true });
-                possibleMoves = moves.map(m => ({
-                    row: 8 - parseInt(m.to[1]),
-                    col: m.to.charCodeAt(0) - 97
-                }));
-            }
-        } else {
-            // Drugi klik - pokušaj pomeranja
-            const fromSquare = String.fromCharCode(97 + selectedSquare.col) + (8 - selectedSquare.row);
-
-            // Proveri da li je promocija pešaka
-            let promotion = 'q';
-            const piece = game.get(fromSquare);
-            if (piece && piece.type === 'p') {
-                if ((piece.color === 'w' && row === 0) || (piece.color === 'b' && row === 7)) {
-                    promotion = 'q'; // automatski dama za sad
-                }
-            }
-
-            try {
-                const moveResult = game.move({
-                    from: fromSquare,
-                    to: algebraicSquare,
-                    promotion: promotion
-                });
-
-                if (moveResult) {
-                    // Pošalji potez drugom igraču
-                    sendMove({
-                        from: fromSquare,
-                        to: algebraicSquare,
-                        promotion: promotion
-                    });
-
-                    selectedSquare = null;
-                    possibleMoves = [];
-                    drawBoard();
-                    updateGameStatus();
-                } else {
-                    // Neispravan potez
-                    selectedSquare = null;
-                    possibleMoves = [];
-                }
-            } catch (err) {
-                selectedSquare = null;
-                possibleMoves = [];
-            }
-        }
-
+        showStatus('✅ Povezan! Čekam drugog igrača...');
         drawBoard();
-    });
 
-    // ==================== POKRETANJE ====================
-    setupDiscord();
+    } catch (e) {
+        console.error(e);
+        showStatus('Greška pri povezivanju');
+    }
+}
+
+function updateParticipants(list) {
+    participants = list;
+    document.getElementById('players').innerText = 'Igrači: ' + list.length;
+    if (list.length >= 2 && myPlayerNumber === null) {
+        if (list[0].id === myUserId) { myPlayerNumber = 0; showStatus('Ti si BELI. Na potezu si!'); }
+        else if (list[1].id === myUserId) { myPlayerNumber = 1; showStatus('Ti si CRNI. Čekaj potez...'); }
+        else { showStatus('Posmatrač'); }
+        drawBoard();
+    }
+}
+
+async function sendMove(data) {
+    if (!discordSdk) return;
+    await discordSdk.commands.sendMessage({ type: 'CHESS_MOVE', data, instanceId });
+}
+
+function handleOpponentMove(data) {
+    game.move(data);
+    selectedSquare = null;
+    possibleMoves = [];
     drawBoard();
-    updateGameStatus();
+    updateStatus();
+}
+
+function showStatus(text) {
+    document.getElementById('status').innerText = text;
+}
+
+// ==================== ŠAHOVSKA LOGIKA ====================
+const game = new Chess();
+let selectedSquare = null;
+let possibleMoves = [];
+
+function isMyTurn() {
+    if (myPlayerNumber === null) return false;
+    return (myPlayerNumber === 0 && game.turn() === 'w') || (myPlayerNumber === 1 && game.turn() === 'b');
+}
+
+function updateStatus() {
+    if (game.isGameOver()) {
+        if (game.isCheckmate()) showStatus('🏆 ŠAH-MAT!');
+        else if (game.isStalemate()) showStatus('🤝 PAT!');
+        else showStatus('🤝 REMI!');
+    } else {
+        const t = game.turn() === 'w' ? 'BELI' : 'CRNI';
+        showStatus((game.isCheck() ? '⚠️ ŠAH! ' : '') + t + ' je na potezu');
+    }
+}
+
+// ==================== CRTANJE ====================
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const S = 60;
+const light = '#f0d9b5', dark = '#b58863';
+
+const symbols = { p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚',P:'♙',R:'♖',N:'♘',B:'♗',Q:'♕',K:'♔' };
+
+function drawBoard() {
+    ctx.clearRect(0,0,480,480);
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+        ctx.fillStyle = (r+c)%2===0 ? light : dark;
+        ctx.fillRect(c*S,r*S,S,S);
+    }
+    if (game.isCheck()) {
+        const b = game.board();
+        for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+            if (b[r][c] && b[r][c].type==='k' && b[r][c].color===game.turn()) {
+                ctx.fillStyle = 'rgba(255,0,0,0.5)';
+                ctx.fillRect(c*S,r*S,S,S);
+            }
+        }
+    }
+    if (selectedSquare) {
+        ctx.fillStyle = 'rgba(255,255,0,0.6)';
+        ctx.fillRect(selectedSquare.col*S,selectedSquare.row*S,S,S);
+    }
+    for (const m of possibleMoves) {
+        ctx.beginPath();
+        ctx.arc(m.col*S+S/2,m.row*S+S/2,16,0,Math.PI*2);
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fill();
+    }
+    const b = game.board();
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+        const p = b[r][c];
+        if (p) {
+            const sym = symbols[p.color==='w'?p.type.toUpperCase():p.type];
+            ctx.font = 'bold 44px "Segoe UI",Arial,sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillText(sym,c*S+S/2+1,r*S+S/2+1);
+            ctx.fillStyle = p.color==='w'?'#fff':'#1a1a1a';
+            ctx.fillText(sym,c*S+S/2,r*S+S/2);
+        }
+    }
+}
+
+// ==================== KLIK ====================
+canvas.addEventListener('click', (e) => {
+    if (!isMyTurn()) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = 480/rect.width, scaleY = 480/rect.height;
+    const col = Math.floor((e.clientX-rect.left)*scaleX/S);
+    const row = Math.floor((e.clientY-rect.top)*scaleY/S);
+    if (col<0||col>7||row<0||row>7) return;
+    const sq = String.fromCharCode(97+col)+(8-row);
+
+    if (!selectedSquare) {
+        const piece = game.get(sq);
+        if (piece && piece.color===game.turn()) {
+            selectedSquare = {row,col};
+            possibleMoves = game.moves({square:sq,verbose:true}).map(m=>({row:8-parseInt(m.to[1]),col:m.to.charCodeAt(0)-97}));
+        }
+    } else {
+        const from = String.fromCharCode(97+selectedSquare.col)+(8-selectedSquare.row);
+        try {
+            const result = game.move({from,to:sq,promotion:'q'});
+            if (result) {
+                sendMove({from,to:sq,promotion:'q'});
+                selectedSquare = null; possibleMoves = [];
+                drawBoard(); updateStatus();
+            } else { selectedSquare = null; possibleMoves = []; }
+        } catch(_) { selectedSquare = null; possibleMoves = []; }
+    }
+    drawBoard();
+});
+
+// ==================== POKRETANJE ====================
+setupDiscord();
+drawBoard();
+updateStatus();
 </script>
+</body>
 </html>
