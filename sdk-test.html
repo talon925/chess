@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>SDK Test</title>
+    <style>
+        body { background: #36393f; color: white; font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; font-size: 24px; }
+    </style>
+</head>
+<body>
+    <div id="status">Cekam SDK...</div>
+    <script>
+        var status = document.getElementById('status');
+        
+        async function init() {
+            status.innerText = 'Proveravam window.discordSdk...';
+            
+            // Čekaj SDK
+            var tries = 0;
+            while (!window.discordSdk && tries < 60) {
+                await new Promise(r => setTimeout(r, 500));
+                tries++;
+            }
+            
+            if (!window.discordSdk) {
+                status.innerText = 'NEUSPEH: SDK nije pronadjen posle 30s. window.discordSdk = ' + typeof window.discordSdk;
+                return;
+            }
+            
+            status.innerText = 'SDK pronadjen! Inicijalizujem...';
+            
+            try {
+                var DiscordSDK = window.discordSdk.DiscordSDK;
+                var sdk = new DiscordSDK('1514311922265227356');
+                await sdk.ready();
+                status.innerText = 'SDK RADI! Ready poziv uspesan!';
+                
+                var auth = await sdk.commands.authenticate();
+                status.innerText = 'SDK RADI! Ulogovan kao: ' + auth.user.username;
+            } catch(e) {
+                status.innerText = 'SDK pronadjen ali GRESKA: ' + e.message;
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>
